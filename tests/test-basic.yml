@@ -1,0 +1,53 @@
+name: Test basic usage - install and add to path
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create fake binary in runner temp
+        run: |
+          mkdir -p "$RUNNER_TEMP/my-tool"
+          printf '#!/bin/sh\necho "my-tool v1.0.0"\n' > "$RUNNER_TEMP/my-tool/my-tool"
+          chmod +x "$RUNNER_TEMP/my-tool/my-tool"
+
+      - id: action
+        uses: .
+        with:
+          folder_name: my-tool
+
+      - name: Assert binary is on PATH and executable
+        run: |
+          echo "Checking if my-tool is on PATH..."
+          if ! command -v my-tool > /dev/null 2>&1; then
+            echo "FAIL: my-tool not found on PATH"
+            exit 1
+          fi
+          OUTPUT=$(my-tool)
+          echo "Output: $OUTPUT"
+          if [ "$OUTPUT" != "my-tool v1.0.0" ]; then
+            echo "FAIL: unexpected output from my-tool: $OUTPUT"
+            exit 1
+          fi
+          echo "PASS: my-tool is on PATH and works correctly"
+
+      - name: Assert binary was moved to tool cache
+        run: |
+          echo "Checking tool cache..."
+          if [ ! -f "$RUNNER_TOOL_CACHE/my-tool/my-tool" ]; then
+            echo "FAIL: my-tool not found in RUNNER_TOOL_CACHE"
+            exit 1
+          fi
+          echo "PASS: my-tool found in RUNNER_TOOL_CACHE at $RUNNER_TOOL_CACHE/my-tool/my-tool"
+
+      - name: Assert source folder in RUNNER_TEMP is empty (files were moved)
+        run: |
+          echo "Checking RUNNER_TEMP..."
+          # After move, the source dir should exist but be empty (or not contain the binary)
+          if [ -f "$RUNNER_TEMP/my-tool/my-tool" ]; then
+            echo "FAIL: my-tool still exists in RUNNER_TEMP (should have been moved)"
+            exit 1
+          fi
+          echo "PASS: my-tool was moved out of RUNNER_TEMP"

@@ -1,0 +1,47 @@
+name: Test cache hit - skip install but add to path
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Simulate a pre-populated tool cache (as if restored from cache)
+        run: |
+          # Simulate cache restore: binary already in RUNNER_TOOL_CACHE
+          mkdir -p "$RUNNER_TOOL_CACHE/cached-tool"
+          printf '#!/bin/sh\necho "cached-tool v2.0.0"\n' > "$RUNNER_TOOL_CACHE/cached-tool/cached-tool"
+          chmod +x "$RUNNER_TOOL_CACHE/cached-tool/cached-tool"
+          # RUNNER_TEMP folder should NOT have the binary (cache hit means no download)
+          # (no files placed in RUNNER_TEMP/cached-tool)
+
+      - id: action
+        uses: .
+        with:
+          folder_name: cached-tool
+          cache_hit: 'true'
+
+      - name: Assert cached binary is on PATH
+        run: |
+          echo "Checking if cached-tool is on PATH..."
+          if ! command -v cached-tool > /dev/null 2>&1; then
+            echo "FAIL: cached-tool not found on PATH"
+            exit 1
+          fi
+          OUTPUT=$(cached-tool)
+          echo "Output: $OUTPUT"
+          if [ "$OUTPUT" != "cached-tool v2.0.0" ]; then
+            echo "FAIL: unexpected output from cached-tool: $OUTPUT"
+            exit 1
+          fi
+          echo "PASS: cached-tool is on PATH and works correctly"
+
+      - name: Assert tool cache still has the binary (not moved/deleted)
+        run: |
+          echo "Checking tool cache..."
+          if [ ! -f "$RUNNER_TOOL_CACHE/cached-tool/cached-tool" ]; then
+            echo "FAIL: cached-tool not found in RUNNER_TOOL_CACHE"
+            exit 1
+          fi
+          echo "PASS: cached-tool still present in RUNNER_TOOL_CACHE"

@@ -1,0 +1,53 @@
+name: Test cache miss - install runs when cache_hit is false
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Create fake binary in runner temp (simulating a fresh download)
+        run: |
+          mkdir -p "$RUNNER_TEMP/fresh-tool"
+          printf '#!/bin/sh\necho "fresh-tool v3.0.0"\n' > "$RUNNER_TEMP/fresh-tool/fresh-tool"
+          chmod +x "$RUNNER_TEMP/fresh-tool/fresh-tool"
+
+      - id: action
+        uses: .
+        with:
+          folder_name: fresh-tool
+          cache_hit: 'false'
+
+      - name: Assert fresh-tool is on PATH
+        run: |
+          echo "Checking if fresh-tool is on PATH..."
+          if ! command -v fresh-tool > /dev/null 2>&1; then
+            echo "FAIL: fresh-tool not found on PATH"
+            exit 1
+          fi
+          OUTPUT=$(fresh-tool)
+          echo "Output: $OUTPUT"
+          if [ "$OUTPUT" != "fresh-tool v3.0.0" ]; then
+            echo "FAIL: unexpected output from fresh-tool: $OUTPUT"
+            exit 1
+          fi
+          echo "PASS: fresh-tool is on PATH and works correctly"
+
+      - name: Assert binary was installed to tool cache
+        run: |
+          echo "Checking tool cache..."
+          if [ ! -f "$RUNNER_TOOL_CACHE/fresh-tool/fresh-tool" ]; then
+            echo "FAIL: fresh-tool not found in RUNNER_TOOL_CACHE"
+            exit 1
+          fi
+          echo "PASS: fresh-tool found in RUNNER_TOOL_CACHE"
+
+      - name: Assert source was moved (not copied) from RUNNER_TEMP
+        run: |
+          echo "Checking RUNNER_TEMP..."
+          if [ -f "$RUNNER_TEMP/fresh-tool/fresh-tool" ]; then
+            echo "FAIL: fresh-tool still in RUNNER_TEMP after install (should have been moved)"
+            exit 1
+          fi
+          echo "PASS: fresh-tool was moved from RUNNER_TEMP to RUNNER_TOOL_CACHE"
