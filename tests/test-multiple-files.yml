@@ -1,0 +1,90 @@
+name: Test install with multiple files including hidden files
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Prepare multiple files including hidden file in RUNNER_TEMP
+        run: |
+          mkdir -p "$RUNNER_TEMP/multitool"
+          # Create multiple executables
+          cat > "$RUNNER_TEMP/multitool/multitool" << 'EOF'
+          #!/bin/sh
+          echo "multitool v3.0.0"
+          EOF
+          chmod +x "$RUNNER_TEMP/multitool/multitool"
+          # Create a helper binary
+          cat > "$RUNNER_TEMP/multitool/multitool-helper" << 'EOF'
+          #!/bin/sh
+          echo "multitool-helper"
+          EOF
+          chmod +x "$RUNNER_TEMP/multitool/multitool-helper"
+          # Create a hidden file (dotglob test)
+          echo "config=true" > "$RUNNER_TEMP/multitool/.multitool-config"
+          echo "Prepared multitool with multiple files in $RUNNER_TEMP/multitool"
+          ls -la "$RUNNER_TEMP/multitool/"
+
+      - id: action
+        uses: .
+        with:
+          folder_name: multitool
+
+      - name: Assert all files were moved to tool cache
+        run: |
+          echo "Checking tool cache at: $RUNNER_TOOL_CACHE/multitool"
+          ls -la "$RUNNER_TOOL_CACHE/multitool/" || true
+
+          if [ ! -f "$RUNNER_TOOL_CACHE/multitool/multitool" ]; then
+            echo "FAIL: multitool binary not found in tool cache"
+            exit 1
+          fi
+          echo "PASS: multitool binary found"
+
+          if [ ! -f "$RUNNER_TOOL_CACHE/multitool/multitool-helper" ]; then
+            echo "FAIL: multitool-helper not found in tool cache"
+            exit 1
+          fi
+          echo "PASS: multitool-helper found"
+
+          if [ ! -f "$RUNNER_TOOL_CACHE/multitool/.multitool-config" ]; then
+            echo "FAIL: hidden config file not found in tool cache (dotglob not working)"
+            exit 1
+          fi
+          echo "PASS: hidden config file found (dotglob works)"
+
+      - name: Assert RUNNER_TEMP folder is now empty (files were moved)
+        run: |
+          COUNT=$(ls -A "$RUNNER_TEMP/multitool" 2>/dev/null | wc -l)
+          echo "Files remaining in RUNNER_TEMP/multitool: $COUNT"
+          if [ "$COUNT" -ne 0 ]; then
+            echo "FAIL: files still in RUNNER_TEMP after move"
+            ls -la "$RUNNER_TEMP/multitool/"
+            exit 1
+          fi
+          echo "PASS: RUNNER_TEMP/multitool is empty after move"
+
+      - name: Assert tool cache folder was added to PATH
+        run: |
+          echo "PATH: $PATH"
+          if ! echo "$PATH" | grep -q "$RUNNER_TOOL_CACHE/multitool"; then
+            echo "FAIL: tool cache folder not found in PATH"
+            exit 1
+          fi
+          echo "PASS: tool cache folder is in PATH"
+
+      - name: Assert tools are executable from PATH
+        run: |
+          if ! command -v multitool > /dev/null 2>&1; then
+            echo "FAIL: multitool not found on PATH"
+            exit 1
+          fi
+          OUTPUT=$(multitool)
+          echo "Output: $OUTPUT"
+          if [ "$OUTPUT" != "multitool v3.0.0" ]; then
+            echo "FAIL: unexpected output from multitool"
+            exit 1
+          fi
+          echo "PASS: multitool is executable from PATH"

@@ -1,0 +1,58 @@
+name: Test cache hit skips install but adds to path
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Prepare fake program already in tool cache (simulating cache hit)
+        run: |
+          mkdir -p "$RUNNER_TOOL_CACHE/cachedtool"
+          cat > "$RUNNER_TOOL_CACHE/cachedtool/cachedtool" << 'EOF'
+          #!/bin/sh
+          echo "cachedtool v2.0.0"
+          EOF
+          chmod +x "$RUNNER_TOOL_CACHE/cachedtool/cachedtool"
+          echo "Prepared fake cachedtool in $RUNNER_TOOL_CACHE/cachedtool"
+          # Ensure RUNNER_TEMP does NOT have the tool (to confirm install is skipped)
+          rm -rf "$RUNNER_TEMP/cachedtool"
+
+      - id: action
+        uses: .
+        with:
+          folder_name: cachedtool
+          cache_hit: 'true'
+
+      - name: Assert tool is still in tool cache (not moved/deleted)
+        run: |
+          echo "Checking tool cache at: $RUNNER_TOOL_CACHE/cachedtool"
+          if [ ! -f "$RUNNER_TOOL_CACHE/cachedtool/cachedtool" ]; then
+            echo "FAIL: cachedtool not found in tool cache after cache hit"
+            exit 1
+          fi
+          echo "PASS: cachedtool still in tool cache"
+
+      - name: Assert tool cache folder was added to PATH
+        run: |
+          echo "PATH: $PATH"
+          if ! echo "$PATH" | grep -q "$RUNNER_TOOL_CACHE/cachedtool"; then
+            echo "FAIL: tool cache folder not found in PATH"
+            exit 1
+          fi
+          echo "PASS: tool cache folder is in PATH"
+
+      - name: Assert tool is executable from PATH
+        run: |
+          if ! command -v cachedtool > /dev/null 2>&1; then
+            echo "FAIL: cachedtool not found on PATH"
+            exit 1
+          fi
+          OUTPUT=$(cachedtool)
+          echo "Output: $OUTPUT"
+          if [ "$OUTPUT" != "cachedtool v2.0.0" ]; then
+            echo "FAIL: unexpected output from cachedtool"
+            exit 1
+          fi
+          echo "PASS: cachedtool is executable from PATH"

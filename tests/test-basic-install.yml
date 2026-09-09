@@ -1,0 +1,57 @@
+name: Test basic install and add to path
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Prepare fake program in RUNNER_TEMP
+        run: |
+          mkdir -p "$RUNNER_TEMP/mytool"
+          # Create a fake executable in the temp folder
+          cat > "$RUNNER_TEMP/mytool/mytool" << 'EOF'
+          #!/bin/sh
+          echo "mytool v1.0.0"
+          EOF
+          chmod +x "$RUNNER_TEMP/mytool/mytool"
+          echo "Prepared fake mytool in $RUNNER_TEMP/mytool"
+
+      - id: action
+        uses: .
+        with:
+          folder_name: mytool
+
+      - name: Assert tool was moved to tool cache
+        run: |
+          echo "Checking tool cache at: $RUNNER_TOOL_CACHE/mytool"
+          if [ ! -f "$RUNNER_TOOL_CACHE/mytool/mytool" ]; then
+            echo "FAIL: mytool not found in tool cache"
+            exit 1
+          fi
+          echo "PASS: mytool found in tool cache"
+
+      - name: Assert tool cache folder was added to PATH
+        run: |
+          echo "PATH: $PATH"
+          # The action appends to GITHUB_PATH which takes effect in subsequent steps
+          if ! echo "$PATH" | grep -q "$RUNNER_TOOL_CACHE/mytool"; then
+            echo "FAIL: tool cache folder not found in PATH"
+            exit 1
+          fi
+          echo "PASS: tool cache folder is in PATH"
+
+      - name: Assert tool is executable from PATH
+        run: |
+          if ! command -v mytool > /dev/null 2>&1; then
+            echo "FAIL: mytool not found on PATH"
+            exit 1
+          fi
+          OUTPUT=$(mytool)
+          echo "Output: $OUTPUT"
+          if [ "$OUTPUT" != "mytool v1.0.0" ]; then
+            echo "FAIL: unexpected output from mytool"
+            exit 1
+          fi
+          echo "PASS: mytool is executable from PATH"
