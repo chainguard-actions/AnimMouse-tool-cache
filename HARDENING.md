@@ -10,52 +10,65 @@
 
 **Harden Agent Version:** `2`
 
-Action **AnimMouse--tool-cache/v1.2.0** was hardened automatically. 3 finding(s) were identified and resolved across 2 iteration(s).
+Action **AnimMouse--tool-cache/v1.2.0** was hardened automatically. 2 finding(s) were identified and resolved across 2 iteration(s).
 
 ## Findings Fixed
 
 ### github-env-injection (severity: high)
 
-The script writes an untrusted input value to $GITHUB_PATH without sanitization. In scripts/add-to-path/Unix-like.sh, the variable $folder_name is sourced from inputs.folder_name (set via env: in action.yaml) and written directly to $GITHUB_PATH: `echo $RUNNER_TOOL_CACHE/$folder_name >> $GITHUB_PATH`. An attacker-controlled folder_name containing newlines could inject arbitrary entries into GITHUB_PATH. The required sanitization step (`printf '%s' "$folder_name" | tr -d '\n\r'`) is missing before the write. Similarly, scripts/add-to-path/Windows.ps1 writes `$env:RUNNER_TOOL_CACHE\$env:folder_name` to $env:GITHUB_PATH via Add-Content without sanitization.
+In `scripts/add-to-path/Unix-like.sh`, the value of `$folder_name` — which is set from `inputs.folder_name` (an attacker-controlled input) via the `env:` block in `action.yaml` — is written directly to `$GITHUB_PATH` on line 4 without the required sanitization step (`printf '%s' "$folder_name" | tr -d '\n\r'`). An attacker can inject newlines into `inputs.folder_name` to write arbitrary entries into `$GITHUB_PATH`, enabling PATH hijacking. The offending line is: `echo $RUNNER_TOOL_CACHE/$folder_name >> $GITHUB_PATH`
 
 Locations:
 
 - `scripts/add-to-path/Unix-like.sh:4`
-- `scripts/add-to-path/Windows.ps1:4`
 
-### unpinned-uses (severity: high)
+### script-injection (severity: high)
 
-The workflow file .github/workflows/test.yaml references actions by mutable tag or branch instead of a pinned full 40-character commit SHA, making the workflow vulnerable to supply-chain attacks if the referenced tag or branch is moved or compromised. Failing references: `uses: actions/cache/restore@v5` (line ~30), `uses: AnimMouse/tool-cache@main` (line ~52), `uses: actions/cache/save@v5` (line ~58). All should be pinned to a full SHA digest, e.g. `actions/cache/restore@<40-hex-sha> # v5`.
+Rule (b) violation: `$folder_name` (sourced from `inputs.folder_name` via `env:` in action.yaml) is expanded unquoted in multiple shell commands across two scripts. Unquoted expansions allow shell metacharacter injection (word splitting, glob expansion, `;`, `|`, `&`, `$(...)`, etc.) from attacker-controlled input.
+
+In `scripts/install/Unix-like.sh`:
+- Line 4: `echo ::group::Installing $folder_name to tool cache` (unquoted)
+- Line 5: `mkdir -p $RUNNER_TOOL_CACHE/$folder_name` (unquoted)
+- Line 6: `mv $RUNNER_TEMP/$folder_name/* $RUNNER_TOOL_CACHE/$folder_name` (unquoted)
+
+In `scripts/add-to-path/Unix-like.sh`:
+- Line 3: `echo ::group::Adding $folder_name tool cache folder to path` (unquoted)
+- Line 4: `echo $RUNNER_TOOL_CACHE/$folder_name >> $GITHUB_PATH` (unquoted)
+
+All occurrences should use `"$folder_name"` (double-quoted).
 
 Locations:
 
-- `.github/workflows/test.yaml:30`
-- `.github/workflows/test.yaml:52`
-- `.github/workflows/test.yaml:58`
-
-### missing-permissions (severity: medium)
-
-The workflow file .github/workflows/test.yaml has no top-level `permissions:` key and no job-level `permissions:` key on the `test` job. Without explicit permissions, the workflow inherits the repository's default token permissions (which may be write-all), violating the principle of least privilege. A `permissions:` block with only the required scopes (e.g. `contents: read`) should be added at the top level or on every job.
-
-Locations:
-
-- `.github/workflows/test.yaml:1`
+- `scripts/install/Unix-like.sh:4`
+- `scripts/install/Unix-like.sh:5`
+- `scripts/install/Unix-like.sh:6`
+- `scripts/add-to-path/Unix-like.sh:3`
+- `scripts/add-to-path/Unix-like.sh:4`
 
 ## Iteration Notes
 
 ### Iteration 1
 
-**Fixes applied:** github-env-injection, unpinned-uses, missing-permissions
+**Fixes applied:** github-env-injection, script-injection
 
 **Notes:**
 
-1. scripts/add-to-path/Unix-like.sh: Added sanitization of folder_name using `printf '%s' "$folder_name" | tr -d '\n\r'` before writing to $GITHUB_PATH. 2. scripts/add-to-path/Windows.ps1: Added sanitization of folder_name using PowerShell's `-replace '[\r\n]', ''` before writing to $env:GITHUB_PATH. 3. .github/workflows/test.yaml: Pinned actions/cache/restore@v5 to SHA caa296126883cff596d87d8935842f9db880ef25, AnimMouse/tool-cache@main to SHA c58dc704bd326aa5d6f995afe80ac0486ec59c5e, and actions/cache/save@v5 to SHA caa296126883cff596d87d8935842f9db880ef25. Added top-level `permissions: contents: read` block.
+Fixed both findings in the two Unix-like shell scripts:
+
+1. scripts/add-to-path/Unix-like.sh:
+   - Added newline sanitization: `safe_folder_name=$(printf '%s' "$folder_name" | tr -d '\n\r')` before writing to $GITHUB_PATH (fixes github-env-injection)
+   - Used `$safe_folder_name` when writing to $GITHUB_PATH
+   - Double-quoted all variable expansions including $folder_name, $RUNNER_TOOL_CACHE, $GITHUB_PATH (fixes script-injection)
+
+2. scripts/install/Unix-like.sh:
+   - Double-quoted all occurrences of $folder_name and related path variables ($RUNNER_TOOL_CACHE, $RUNNER_TEMP) to prevent word splitting and glob injection (fixes script-injection)
+   - The glob `/*` after the quoted path is intentional and correct for expanding directory contents
 
 ### Iteration 2
 
-**Fixes applied:** script-injection
+**Fixes applied:** github-env-injection
 
 **Notes:**
 
-Fixed unquoted expansions of $folder_name in hardened/action/scripts/install/Unix-like.sh. All three affected lines (4, 5, 6) now use double-quoted expansions: (1) `echo "::group::Installing $folder_name to tool cache"`, (2) `mkdir -p "$RUNNER_TOOL_CACHE/$folder_name"`, (3) `mv "$RUNNER_TEMP/$folder_name/"* "$RUNNER_TOOL_CACHE/$folder_name"`. The glob `*` on line 6 is kept outside the quotes so it still expands correctly under `shopt -s dotglob`, while `$folder_name` is protected inside the quoted prefix.
+Fixed scripts/add-to-path/Windows.ps1: added `$safe_folder_name = $env:folder_name -replace '[\r\n]', ''` to strip newlines/carriage returns from the attacker-controlled `folder_name` input before writing it to `$GITHUB_PATH`. The sanitized variable is now used in the `Add-Content` call instead of the raw `$env:folder_name`. This mirrors the existing sanitization in the Unix-like counterpart script.
 
