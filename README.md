@@ -6,10 +6,10 @@ Hardened by [Chainguard](https://www.chainguard.dev) from the upstream action at
 
 ## Versions
 
-| Version | Tag | Upstream commit |
-|---------|-----|-----------------|
-| v1 | [`v1`](https://github.com/chainguard-actions/AnimMouse-tool-cache/tree/v1) | [`c58dc70`](https://github.com/AnimMouse/tool-cache/commit/c58dc704bd326aa5d6f995afe80ac0486ec59c5e) |
-| v1.2.0 | [`v1.2.0`](https://github.com/chainguard-actions/AnimMouse-tool-cache/tree/v1.2.0) | [`c58dc70`](https://github.com/AnimMouse/tool-cache/commit/c58dc704bd326aa5d6f995afe80ac0486ec59c5e) |
+| Version | Tag | Upstream commit | Hardening report |
+|---------|-----|-----------------|------------------|
+| v1 | [`v1`](https://github.com/chainguard-actions/AnimMouse-tool-cache/tree/v1) | [`c58dc70`](https://github.com/AnimMouse/tool-cache/commit/c58dc704bd326aa5d6f995afe80ac0486ec59c5e) | [`HARDENING.md`](https://github.com/chainguard-actions/AnimMouse-tool-cache/blob/v1/HARDENING.md) |
+| v1.2.0 | [`v1.2.0`](https://github.com/chainguard-actions/AnimMouse-tool-cache/tree/v1.2.0) | [`c58dc70`](https://github.com/AnimMouse/tool-cache/commit/c58dc704bd326aa5d6f995afe80ac0486ec59c5e) | [`HARDENING.md`](https://github.com/chainguard-actions/AnimMouse-tool-cache/blob/v1.2.0/HARDENING.md) |
 
 ## Privacy
 
